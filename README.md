@@ -92,7 +92,7 @@ Backend API endpoints (used by the frontend):
 | Endpoint | Method | Body / Params | Returns |
 |---|---|---|---|
 | `/health` | GET | — | `{"status": "ok"}` |
-| `/transcribe` | POST | multipart file field `audio`, optional `language` form field (`fr` default, `en` for Translate-to-learn) | transcript text, language, word-level confidences |
+| `/transcribe` | POST | multipart file field `audio`, optional `language` form field (`fr` default, `en` for Translate-to-learn) | transcript text, language, word-level confidences, pronunciation notes (French only) |
 | `/translate` | POST | `{"text": str, "direction": "fr-en" \| "en-fr"}` | `{"translation": str}` |
 | `/tutor-respond` | POST | `{"history": [{"role", "content"}...], "user_text": str}` | `{"reply": str}` |
 | `/speak` | POST | `{"text": str}` | `audio/wav` file |
@@ -101,8 +101,8 @@ To sanity-check things without a microphone or a running server (useful for CI):
 - `python tests/test_pipeline_smoke.py` exercises the raw pipeline (TTS → STT → Ollama → TTS).
 - `python tests/test_api_smoke.py` exercises the FastAPI app in-process, hitting every endpoint.
 
-Not yet built: pronunciation feedback, session history persistence, Docker Compose, and
-the setup script — see [`PROJECT_BRIEF.md`](./PROJECT_BRIEF.md) for the full build plan.
+Not yet built: session history persistence, Docker Compose, and the setup script — see
+[`PROJECT_BRIEF.md`](./PROJECT_BRIEF.md) for the full build plan.
 
 ## Privacy
 

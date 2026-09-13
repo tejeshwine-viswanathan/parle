@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import MicButton from '../components/MicButton';
-import { type ChatMessage, speak, transcribe, translate, tutorRespond } from '../lib/api';
+import {
+  type ChatMessage,
+  type PronunciationNote,
+  speak,
+  transcribe,
+  translate,
+  tutorRespond,
+} from '../lib/api';
 
 type Turn = {
   id: string;
   userFr: string;
   userEn: string;
+  notes: PronunciationNote[];
   tutorFr: string;
   tutorEn: string;
   audioUrl: string;
@@ -75,6 +83,7 @@ export default function Practice() {
             id: crypto.randomUUID(),
             userFr: transcription.text,
             userEn,
+            notes: transcription.notes,
             tutorFr: reply,
             tutorEn,
             audioUrl,
@@ -141,6 +150,16 @@ export default function Practice() {
               <p>{turn.userFr}</p>
               {showEnglish && <p className="mt-1 text-sm text-sky-100">{turn.userEn}</p>}
             </div>
+            {turn.notes.length > 0 && (
+              <div className="ml-auto max-w-lg space-y-1 rounded-2xl bg-amber-50 px-4 py-2 text-sm text-amber-800">
+                <p className="font-medium">Pronunciation tips</p>
+                {turn.notes.map((note, i) => (
+                  <p key={i}>
+                    <span className="font-medium">{note.word}</span> — {note.tip}
+                  </p>
+                ))}
+              </div>
+            )}
             <div className="mr-auto max-w-lg rounded-2xl rounded-tl-sm bg-slate-100 px-4 py-2 text-slate-800">
               <p>{turn.tutorFr}</p>
               {showEnglish && <p className="mt-1 text-sm text-slate-500">{turn.tutorEn}</p>}

@@ -45,8 +45,10 @@ def main() -> None:
             resp = client.post("/transcribe", files={"audio": ("seed.wav", f, "audio/wav")})
         assert resp.status_code == 200, resp.text
         transcription = resp.json()
-        print(f"   -> {transcription['text']!r} (lang={transcription['language']})")
+        print(f"   -> {transcription['text']!r} (lang={transcription['language']}, "
+              f"{len(transcription['notes'])} pronunciation notes)")
         assert transcription["text"]
+        assert "notes" in transcription
         assert transcription["language"] == "fr"
 
         print("3. POST /translate (fr-en)")

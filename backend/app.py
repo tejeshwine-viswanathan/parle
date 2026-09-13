@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from . import config, stt, translate, tts, tutor
+from . import config, pronunciation, stt, translate, tts, tutor
 
 app = FastAPI(title="Parlé backend")
 
@@ -56,15 +56,20 @@ class SpeakRequest(BaseModel):
     text: str
 
 
+class TranscribeResponse(stt.Transcription):
+    notes: list[pronunciation.PronunciationNote]
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/transcribe", response_model=stt.Transcription)
-async def transcribe(audio: UploadFile, language: str = Form("fr")) -> stt.Transcription:
+@app.post("/transcribe", response_model=TranscribeResponse)
+async def transcribe(audio: UploadFile, language: str = Form("fr")) -> TranscribeResponse:
     """Transcribe an uploaded audio clip (French by default; the Translate-to-learn
-    tab also sends English clips via `language=en`)."""
+    tab also sends English clips via `language=en`). French transcriptions also get
+    best-effort pronunciation notes on words the model struggled with."""
     suffix = Path(audio.filename or "audio.wav").suffix or ".wav"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = Path(tmp.name)
@@ -77,7 +82,9 @@ async def transcribe(audio: UploadFile, language: str = Form("fr")) -> stt.Trans
 
     if not transcription["text"]:
         raise HTTPException(status_code=422, detail="No speech recognized in audio")
-    return transcription
+
+    notes = pronunciation.analyze(transcription) if language == "fr" else []
+    return {**transcription, "notes": notes}
 
 
 @app.post("/translate", response_model=TranslateResponse)
