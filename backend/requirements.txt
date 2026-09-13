@@ -1,0 +1,16 @@
+# Speech-to-text
+faster-whisper>=1.2.1
+
+# Text-to-speech
+piper-tts>=1.8.0
+
+# Local LLM client (Ollama must be installed and running separately)
+ollama>=0.6.2
+
+# Audio I/O for the CLI pipeline
+sounddevice>=0.5.6
+soundfile>=0.14.0
+numpy>=2.5.3
+
+# Config
+python-dotenv>=1.2.3

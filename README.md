@@ -53,6 +53,28 @@ or run backend and frontend separately during development — see [`ARCHITECTURE
 
 Then open `http://localhost:5173` in your browser, pick a tab, and start talking.
 
+### Current status: backend pipeline only
+
+The frontend and FastAPI endpoints haven't been built yet. Right now you can exercise
+the full local pipeline (record → speech-to-text → Ollama tutor → text-to-speech) from
+the command line:
+
+```bash
+python -m venv .venv && source .venv/Scripts/activate  # or .venv/bin/activate on macOS/Linux
+pip install -r backend/requirements.txt
+python -m piper.download_voices --download-dir backend/voices fr_FR-siwis-medium
+cp .env.example .env   # edit OLLAMA_MODEL to a model you've pulled, e.g. `ollama pull llama3.1`
+
+python scripts/cli_pipeline.py
+```
+
+Press Enter to start recording, speak French, press Enter again to stop — the tutor's
+spoken French reply plays back through your speakers. Ctrl+C to quit.
+
+To sanity-check the pipeline without a microphone (useful for CI), run
+`python tests/test_pipeline_smoke.py` — it synthesizes a French sentence, transcribes it
+back, sends it to the tutor, and speaks the reply.
+
 ## Privacy
 
 Parlé does not collect, transmit, or store your data anywhere but your own disk. There are no accounts, no analytics, and no network calls other than the ones your own Ollama instance makes locally. You can clear all saved history from the app at any time.

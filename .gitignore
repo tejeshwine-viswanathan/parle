@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Parlé project-specific
+node_modules/
+frontend/dist/
+backend/voices/*.onnx
+backend/voices/*.onnx.json
+data/
+*.wav
+scripts/scratch/
