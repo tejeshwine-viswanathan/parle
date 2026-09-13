@@ -1,2 +1,70 @@
-# parle
-Local, privacy-first French speaking tutor powered by Ollama - talk, get corrected, talk back.
+# Parlé
+
+A free, open-source, voice-to-voice French tutor that runs entirely on your own machine. Talk in French, get transcribed, translated, and corrected on pronunciation — then have a real spoken conversation with an AI tutor that keeps prompting you to keep talking.
+
+No API keys. No cloud calls. No accounts. Everything — speech recognition, translation, the tutor's conversation, and the voice that talks back — runs locally via [Ollama](https://ollama.com) and open-source speech models.
+
+## Features
+
+- **Hold-to-talk practice mode** — press and hold to speak French, release to send.
+- **Live transcript + translation** — see what you said in French and English side by side.
+- **Pronunciation feedback** — specific, plain-language notes on words or sounds you likely got wrong.
+- **A tutor that actually converses** — it replies out loud in French and keeps asking follow-up questions or giving you new things to talk about.
+- **Show English on demand** — everything the tutor says is available in English behind a toggle, hidden by default so you practice listening.
+- **Translate-to-learn tab** — type or say something in English you don't know how to phrase, and hear it back in French.
+- **100% local and private** — your voice, transcripts, and conversation history never leave your computer.
+
+## How it works
+
+```
+Hold-to-talk mic  →  Speech-to-text  →  Tutor engine  →  Text-to-speech  →  You hear + see French
+   (browser)         (faster-whisper)      (Ollama)          (Piper)
+```
+
+Full architecture and design decisions are in [`PROJECT_BRIEF.md`](./PROJECT_BRIEF.md).
+
+## Prerequisites
+
+- [Ollama](https://ollama.com) installed and running, with a model pulled:
+  ```bash
+  ollama pull llama3.1
+  ```
+- Python 3.10+
+- Node.js 18+
+- `ffmpeg` (for audio handling)
+
+## Installation
+
+```bash
+git clone https://github.com/<your-username>/parle.git
+cd parle
+./scripts/setup.sh
+```
+
+The setup script installs backend and frontend dependencies and pulls the required speech models.
+
+## Usage
+
+```bash
+docker compose up
+```
+
+or run backend and frontend separately during development — see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+
+Then open `http://localhost:5173` in your browser, pick a tab, and start talking.
+
+## Privacy
+
+Parlé does not collect, transmit, or store your data anywhere but your own disk. There are no accounts, no analytics, and no network calls other than the ones your own Ollama instance makes locally. You can clear all saved history from the app at any time.
+
+## Tech stack
+
+Speech-to-text (faster-whisper), translation and conversation (Ollama), text-to-speech (Piper), backend (FastAPI), frontend (React + Vite + Tailwind) — all free and open source. See [`PROJECT_BRIEF.md`](./PROJECT_BRIEF.md) for the full breakdown and rationale.
+
+## Contributing
+
+Issues and pull requests are welcome — see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
+## License
+
+[MIT](./LICENSE)
