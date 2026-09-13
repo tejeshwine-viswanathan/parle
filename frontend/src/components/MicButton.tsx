@@ -5,7 +5,7 @@ type Props = {
   disabled?: boolean;
 };
 
-export default function HoldToTalkButton({ onRecordingComplete, disabled }: Props) {
+export default function MicButton({ onRecordingComplete, disabled }: Props) {
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -52,29 +52,31 @@ export default function HoldToTalkButton({ onRecordingComplete, disabled }: Prop
     setRecording(false);
   }, []);
 
+  const toggleRecording = useCallback(() => {
+    if (recording) {
+      stopRecording();
+    } else {
+      void startRecording();
+    }
+  }, [recording, startRecording, stopRecording]);
+
   return (
     <div className="flex flex-col items-center gap-3">
       <button
         type="button"
         disabled={disabled}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          void startRecording();
-        }}
-        onPointerUp={stopRecording}
-        onPointerLeave={() => recording && stopRecording()}
-        onPointerCancel={stopRecording}
+        onClick={toggleRecording}
         className={`h-24 w-24 select-none rounded-full text-4xl shadow-lg transition-all
           duration-150 focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
           disabled:cursor-not-allowed disabled:opacity-40
-          ${recording ? 'scale-110 bg-rose-500 shadow-rose-300' : 'bg-sky-500 hover:bg-sky-400 shadow-sky-200'}`}
+          ${recording ? 'scale-110 animate-pulse bg-rose-500 shadow-rose-300' : 'bg-sky-500 hover:bg-sky-400 shadow-sky-200'}`}
         aria-pressed={recording}
-        aria-label="Hold to talk"
+        aria-label="Tap to talk"
       >
         🎤
       </button>
       <p className="text-sm font-medium text-slate-500">
-        {recording ? 'Recording… release to send' : 'Hold to talk'}
+        {recording ? 'Recording… tap to stop' : 'Tap to talk'}
       </p>
       {error && <p className="max-w-xs text-center text-sm text-rose-500">{error}</p>}
     </div>

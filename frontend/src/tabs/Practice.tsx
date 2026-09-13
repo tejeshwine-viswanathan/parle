@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import HoldToTalkButton from '../components/HoldToTalkButton';
+import MicButton from '../components/MicButton';
 import { type ChatMessage, speak, transcribe, translate, tutorRespond } from '../lib/api';
 
 type Turn = {
@@ -18,12 +18,27 @@ export default function Practice() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns]);
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  const playAudio = useCallback(
+    (url: string) => {
+      if (!audioRef.current) return;
+      audioRef.current.src = url;
+      audioRef.current.playbackRate = playbackRate;
+      void audioRef.current.play();
+    },
+    [playbackRate],
+  );
 
   const handleRecording = useCallback(
     async (audio: Blob) => {
@@ -66,10 +81,7 @@ export default function Practice() {
           },
         ]);
 
-        if (audioRef.current) {
-          audioRef.current.src = audioUrl;
-          void audioRef.current.play();
-        }
+        playAudio(audioUrl);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Something went wrong.');
       } finally {
@@ -77,7 +89,7 @@ export default function Practice() {
         setStatus('');
       }
     },
-    [history],
+    [history, playAudio],
   );
 
   return (
@@ -85,26 +97,41 @@ export default function Practice() {
       <div className="flex items-center justify-between border-b border-slate-100 px-6 py-3">
         <p className="text-sm text-slate-500">
           {turns.length === 0
-            ? 'Hold the mic and say something in French to start.'
+            ? 'Tap the mic and say something in French to start.'
             : `${turns.length} exchange${turns.length === 1 ? '' : 's'} so far`}
         </p>
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
-          <input
-            type="checkbox"
-            checked={showEnglish}
-            onChange={(e) => setShowEnglish(e.target.checked)}
-            className="h-4 w-4 accent-sky-500"
-          />
-          Show English
-        </label>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-600">
+            Speed
+            <input
+              type="range"
+              min={0.5}
+              max={1.25}
+              step={0.25}
+              value={playbackRate}
+              onChange={(e) => setPlaybackRate(Number(e.target.value))}
+              className="w-20 accent-sky-500"
+            />
+            <span className="w-9 tabular-nums text-slate-500">{playbackRate}x</span>
+          </label>
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
+            <input
+              type="checkbox"
+              checked={showEnglish}
+              onChange={(e) => setShowEnglish(e.target.checked)}
+              className="h-4 w-4 accent-sky-500"
+            />
+            Show English
+          </label>
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-6 py-4">
         {turns.length === 0 && (
           <div className="flex h-full items-center justify-center text-center text-slate-400">
             <p className="max-w-sm">
-              Bonjour ! Press and hold the microphone below, speak a bit of French, and
-              I'll reply out loud and keep the conversation going.
+              Bonjour ! Tap the microphone below, speak a bit of French, and I'll reply
+              out loud and keep the conversation going.
             </p>
           </div>
         )}
@@ -119,12 +146,7 @@ export default function Practice() {
               {showEnglish && <p className="mt-1 text-sm text-slate-500">{turn.tutorEn}</p>}
               <button
                 type="button"
-                onClick={() => {
-                  if (audioRef.current) {
-                    audioRef.current.src = turn.audioUrl;
-                    void audioRef.current.play();
-                  }
-                }}
+                onClick={() => playAudio(turn.audioUrl)}
                 className="mt-1 text-sm text-sky-600 hover:underline"
               >
                 🔊 Replay
@@ -137,7 +159,7 @@ export default function Practice() {
       <div className="border-t border-slate-100 px-6 py-5">
         {status && <p className="mb-2 text-center text-sm text-slate-500">{status}</p>}
         {error && <p className="mb-2 text-center text-sm text-rose-500">{error}</p>}
-        <HoldToTalkButton onRecordingComplete={handleRecording} disabled={busy} />
+        <MicButton onRecordingComplete={handleRecording} disabled={busy} />
       </div>
 
       <audio ref={audioRef} className="hidden" />

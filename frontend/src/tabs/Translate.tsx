@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import HoldToTalkButton from '../components/HoldToTalkButton';
+import MicButton from '../components/MicButton';
 import { speak, transcribe, translate } from '../lib/api';
 
 type Entry = {
@@ -129,7 +129,7 @@ export default function Translate() {
             Translate
           </button>
         </form>
-        <HoldToTalkButton onRecordingComplete={handleRecording} disabled={busy} />
+        <MicButton onRecordingComplete={handleRecording} disabled={busy} />
       </div>
 
       <audio ref={audioRef} className="hidden" />

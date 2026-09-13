@@ -11,6 +11,18 @@ from . import config
 
 _model: WhisperModel | None = None
 
+# faster-whisper (like upstream Whisper) was trained on a lot of Amara.org-subtitled
+# video, and hallucinates these stock phrases on silence or near-silent audio instead
+# of returning nothing. VAD filtering (below) catches most of it; this is a backstop
+# for whatever slips through.
+_HALLUCINATION_PHRASES = [
+    "sous-titres réalisés par la communauté d'amara.org",
+    "sous-titrage st' 501",
+    "merci d'avoir regardé cette vidéo",
+    "merci d'avoir regardé",
+    "abonnez-vous",
+]
+
 
 class Word(TypedDict):
     word: str
@@ -47,8 +59,13 @@ def transcribe(audio_path: str | Path, language: str = "fr") -> Transcription:
         str(audio_path),
         language=language,
         word_timestamps=True,
+        vad_filter=True,
     )
-    segments = list(segments)
+    segments = [
+        segment
+        for segment in segments
+        if segment.text.strip().lower().strip(".!? ") not in _HALLUCINATION_PHRASES
+    ]
 
     words: list[Word] = [
         {
