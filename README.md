@@ -49,15 +49,13 @@ The setup script installs backend and frontend dependencies and pulls the requir
 docker compose up
 ```
 
-or run backend and frontend separately during development — see [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+or run backend and frontend separately during development (see below).
 
 Then open `http://localhost:5173` in your browser, pick a tab, and start talking.
 
-### Current status: backend pipeline only
+### Current status: backend + frontend working, Docker/setup script not yet built
 
-The frontend and FastAPI endpoints haven't been built yet. Right now you can exercise
-the full local pipeline (record → speech-to-text → Ollama tutor → text-to-speech) from
-the command line:
+Backend setup:
 
 ```bash
 python -m venv .venv && source .venv/Scripts/activate  # or .venv/bin/activate on macOS/Linux
@@ -65,15 +63,46 @@ pip install -r backend/requirements.txt
 python -m piper.download_voices --download-dir backend/voices fr_FR-siwis-medium
 cp .env.example .env   # edit OLLAMA_MODEL to a model you've pulled, e.g. `ollama pull llama3.1`
 
+uvicorn backend.app:app --reload --port 8000
+```
+
+Frontend setup (separate terminal):
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` — the dev server proxies `/api/*` to the backend on port
+8000 (see `frontend/vite.config.ts`), so no CORS setup is needed. Hold the mic button to
+speak French on the Practice tab, or type/speak English on the Translate-to-learn tab.
+
+You can also skip the browser and talk to the backend directly from the CLI:
+
+```bash
 python scripts/cli_pipeline.py
 ```
 
 Press Enter to start recording, speak French, press Enter again to stop — the tutor's
 spoken French reply plays back through your speakers. Ctrl+C to quit.
 
-To sanity-check the pipeline without a microphone (useful for CI), run
-`python tests/test_pipeline_smoke.py` — it synthesizes a French sentence, transcribes it
-back, sends it to the tutor, and speaks the reply.
+Backend API endpoints (used by the frontend):
+
+| Endpoint | Method | Body / Params | Returns |
+|---|---|---|---|
+| `/health` | GET | — | `{"status": "ok"}` |
+| `/transcribe` | POST | multipart file field `audio`, optional `language` form field (`fr` default, `en` for Translate-to-learn) | transcript text, language, word-level confidences |
+| `/translate` | POST | `{"text": str, "direction": "fr-en" \| "en-fr"}` | `{"translation": str}` |
+| `/tutor-respond` | POST | `{"history": [{"role", "content"}...], "user_text": str}` | `{"reply": str}` |
+| `/speak` | POST | `{"text": str}` | `audio/wav` file |
+
+To sanity-check things without a microphone or a running server (useful for CI):
+- `python tests/test_pipeline_smoke.py` exercises the raw pipeline (TTS → STT → Ollama → TTS).
+- `python tests/test_api_smoke.py` exercises the FastAPI app in-process, hitting every endpoint.
+
+Not yet built: pronunciation feedback, session history persistence, Docker Compose, and
+the setup script — see [`PROJECT_BRIEF.md`](./PROJECT_BRIEF.md) for the full build plan.
 
 ## Privacy
 

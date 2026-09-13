@@ -7,6 +7,14 @@ piper-tts>=1.8.0
 # Local LLM client (Ollama must be installed and running separately)
 ollama>=0.6.2
 
+# Backend API
+fastapi>=0.121.2
+uvicorn[standard]>=0.38.0
+python-multipart>=0.0.20
+
+# Test client for tests/test_api_smoke.py (TestClient needs httpx)
+httpx>=0.28.1
+
 # Audio I/O for the CLI pipeline
 sounddevice>=0.5.6
 soundfile>=0.14.0
