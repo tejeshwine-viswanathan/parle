@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Props = {
   onRecordingComplete: (audio: Blob) => void;
@@ -7,17 +7,36 @@ type Props = {
 
 const BAR_COLORS = ['#0055A4', '#ED2939', '#94A3B8', '#ED2939', '#0055A4'];
 
+// A forgotten recording would otherwise grow without bound and take Whisper
+// minutes to chew through, so stop it automatically.
+const MAX_RECORDING_MS = 60_000;
+
 export default function MicButton({ onRecordingComplete, disabled }: Props) {
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const autoStopRef = useRef<number | null>(null);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
   }, []);
+
+  const stopRecording = useCallback(() => {
+    if (autoStopRef.current !== null) {
+      window.clearTimeout(autoStopRef.current);
+      autoStopRef.current = null;
+    }
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop();
+    }
+    recorderRef.current = null;
+    setRecording(false);
+  }, []);
+
+  useEffect(() => stopRecording, [stopRecording]);
 
   const startRecording = useCallback(async () => {
     if (disabled || recording) return;
@@ -41,18 +60,11 @@ export default function MicButton({ onRecordingComplete, disabled }: Props) {
       recorderRef.current = recorder;
       recorder.start();
       setRecording(true);
+      autoStopRef.current = window.setTimeout(stopRecording, MAX_RECORDING_MS);
     } catch {
       setError("Couldn't access the microphone — check your browser permissions.");
     }
-  }, [disabled, recording, onRecordingComplete, stopStream]);
-
-  const stopRecording = useCallback(() => {
-    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-      recorderRef.current.stop();
-    }
-    recorderRef.current = null;
-    setRecording(false);
-  }, []);
+  }, [disabled, recording, onRecordingComplete, stopStream, stopRecording]);
 
   const toggleRecording = useCallback(() => {
     if (recording) {
@@ -100,10 +112,14 @@ export default function MicButton({ onRecordingComplete, disabled }: Props) {
         ))}
       </div>
 
-      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+      <p role="status" className="text-sm font-medium text-slate-500 dark:text-slate-400">
         {recording ? 'Listening… tap to stop' : 'Tap to talk'}
       </p>
-      {error && <p className="max-w-xs text-center text-sm text-rose-500">{error}</p>}
+      {error && (
+        <p role="alert" className="max-w-xs text-center text-sm text-rose-500">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

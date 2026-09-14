@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import MicButton from '../components/MicButton';
-import { speak, transcribe, translate } from '../lib/api';
+import { releaseAudio, speak, transcribe, translate } from '../lib/api';
 
 type Entry = {
   id: string;
@@ -22,6 +22,13 @@ export default function Translate({ voiceId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const entriesRef = useRef(entries);
+
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
+
+  useEffect(() => () => releaseAudio(...entriesRef.current.map((e) => e.audioUrl)), []);
 
   const runTranslation = useCallback(
     async (english: string) => {
@@ -84,6 +91,7 @@ export default function Translate({ voiceId }: Props) {
         try {
           audioUrl = await speak(entry.french, voiceId);
           setEntries((es) => es.map((e) => (e.id === entry.id ? { ...e, audioUrl, voice: voiceId } : e)));
+          releaseAudio(entry.audioUrl);
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Something went wrong.');
           return;
@@ -134,8 +142,16 @@ export default function Translate({ voiceId }: Props) {
       </div>
 
       <div className="border-t border-slate-100 px-6 py-5 dark:border-slate-800">
-        {status && <p className="mb-2 text-center text-sm text-slate-500 dark:text-slate-400">{status}</p>}
-        {error && <p className="mb-2 text-center text-sm text-rose-500">{error}</p>}
+        {status && (
+          <p role="status" className="mb-2 text-center text-sm text-slate-500 dark:text-slate-400">
+            {status}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="mb-2 text-center text-sm text-rose-500">
+            {error}
+          </p>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();

@@ -29,6 +29,14 @@ async function asJson<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export type Health = { status: string; ready: boolean; models: Record<string, string> };
+
+export async function health(): Promise<Health> {
+  const res = await fetch(`${BASE}/health`);
+  return asJson<Health>(res);
+}
+
+/** Transcribe a clip. An empty `text` means no speech was recognised — not an error. */
 export async function transcribe(audio: Blob, language: 'fr' | 'en' = 'fr'): Promise<Transcription> {
   const form = new FormData();
   form.append('audio', audio, 'recording.webm');
@@ -83,6 +91,8 @@ export async function scenarioRespond(
   return data.reply;
 }
 
+/** Returns an object URL for the synthesized clip. Callers own it — pass it to
+ * `releaseAudio` once the clip is no longer needed, or the WAV stays in memory. */
 export async function speak(text: string, voice?: string): Promise<string> {
   const res = await fetch(`${BASE}/speak`, {
     method: 'POST',
@@ -95,6 +105,10 @@ export async function speak(text: string, voice?: string): Promise<string> {
   }
   const blob = await res.blob();
   return URL.createObjectURL(blob);
+}
+
+export function releaseAudio(...urls: (string | null | undefined)[]) {
+  for (const url of urls) if (url) URL.revokeObjectURL(url);
 }
 
 export async function phrasingSuggestion(text: string): Promise<string | null> {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   type ChatMessage,
   type Correction,
+  releaseAudio,
   speak,
   topicComplete,
   topicNudge,
@@ -33,9 +34,10 @@ const PRESET_TOPICS = [
 ];
 
 // How long to wait, after speech has started, before treating silence as a
-// stall worth nudging. Tuned loosely for typical laptop mics — no real VAD,
-// just a rolling RMS check on the live stream.
-const STALL_MS = 4000;
+// stall worth nudging. Thinking in a foreign language takes real pauses, so
+// this is user-adjustable; the detection itself is just a rolling RMS check on
+// the live stream, no real VAD.
+const DEFAULT_STALL_SECONDS = 6;
 const SPEAKING_RMS_THRESHOLD = 0.02;
 const POLL_MS = 150;
 
@@ -55,14 +57,21 @@ function formatTime(totalSeconds: number) {
 
 type Props = {
   voiceId: string;
+  onThinkingChange?: (thinking: boolean) => void;
 };
 
-export default function TopicPractice({ voiceId }: Props) {
+const THINKING_STATUS = 'Parlé is thinking…';
+
+export default function TopicPractice({ voiceId, onThinkingChange }: Props) {
   const [phase, setPhase] = useState<Phase>('setup');
   const [topic, setTopic] = useState('');
   const [targetMinutes, setTargetMinutes] = useState(3);
+  const [stallSeconds, setStallSeconds] = useState(DEFAULT_STALL_SECONDS);
   const [transcriptTurns, setTranscriptTurns] = useState<TranscriptTurn[]>([]);
   const [corrections, setCorrections] = useState<CorrectionWithAudio[]>([]);
+  // Grammar review runs one learner segment at a time after the session ends;
+  // results stream in so the transcript is readable while the rest is checked.
+  const [review, setReview] = useState<{ done: number; total: number } | null>(null);
   const [showEnglish, setShowEnglish] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [listening, setListening] = useState(false);
@@ -75,6 +84,15 @@ export default function TopicPractice({ voiceId }: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const voiceIdRef = useRef(voiceId);
+  const stallMsRef = useRef(DEFAULT_STALL_SECONDS * 1000);
+  // Nudge clips aren't kept on a transcript turn, so the previous one is
+  // released whenever the next plays (and on cleanup).
+  const nudgeAudioRef = useRef<string | null>(null);
+  const transcriptTurnsRef = useRef(transcriptTurns);
+  const correctionsRef = useRef(corrections);
+  // Bumped on every reset so a still-running review from an old session can't
+  // append its findings to a new one.
+  const reviewRunRef = useRef(0);
   const topicHistoryRef = useRef<ChatMessage[]>([]);
   // Just the learner's own spoken segments and the generated completions, in
   // order — no opener, no nudges. This is both (a) what we hand back to the
@@ -115,6 +133,23 @@ export default function TopicPractice({ voiceId }: Props) {
   useEffect(() => {
     targetMinutesRef.current = targetMinutes;
   }, [targetMinutes]);
+
+  useEffect(() => {
+    stallMsRef.current = stallSeconds * 1000;
+  }, [stallSeconds]);
+
+  useEffect(() => {
+    transcriptTurnsRef.current = transcriptTurns;
+  }, [transcriptTurns]);
+
+  useEffect(() => {
+    correctionsRef.current = corrections;
+  }, [corrections]);
+
+  useEffect(() => {
+    onThinkingChange?.(status === THINKING_STATUS);
+    return () => onThinkingChange?.(false);
+  }, [status, onThinkingChange]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -177,10 +212,20 @@ export default function TopicPractice({ voiceId }: Props) {
     }
   }
 
+  function releaseSessionAudio() {
+    releaseAudio(
+      nudgeAudioRef.current,
+      ...transcriptTurnsRef.current.map((t) => t.audioUrl),
+      ...correctionsRef.current.map((c) => c.audioUrl),
+    );
+    nudgeAudioRef.current = null;
+  }
+
   useEffect(() => {
     return () => {
       sessionActiveRef.current = false;
       cleanupAll();
+      releaseSessionAudio();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -233,7 +278,7 @@ export default function TopicPractice({ voiceId }: Props) {
         } else if (spokeRef.current) {
           if (silenceStartRef.current === null) {
             silenceStartRef.current = Date.now();
-          } else if (Date.now() - silenceStartRef.current >= STALL_MS) {
+          } else if (Date.now() - silenceStartRef.current >= stallMsRef.current) {
             if (pollRef.current !== null) {
               window.clearInterval(pollRef.current);
               pollRef.current = null;
@@ -274,7 +319,7 @@ export default function TopicPractice({ voiceId }: Props) {
       essayRef.current = [...essayRef.current, transcription.text];
       setTranscriptTurns((t) => [...t, { id: crypto.randomUUID(), role: 'user', text: transcription.text }]);
 
-      setStatus('Parlé is thinking…');
+      setStatus(THINKING_STATUS);
       const nudge = await topicNudge(topic, topicHistoryRef.current);
       topicHistoryRef.current = [...topicHistoryRef.current, { role: 'assistant', content: nudge }];
       const nudgeId = crypto.randomUUID();
@@ -283,6 +328,8 @@ export default function TopicPractice({ voiceId }: Props) {
 
       setStatus('');
       const audioUrl = await speak(nudge, voiceIdRef.current);
+      releaseAudio(nudgeAudioRef.current);
+      nudgeAudioRef.current = audioUrl;
       if (audioRef.current && sessionActiveRef.current) {
         audioRef.current.src = audioUrl;
         resumeTimer(); // the tutor's nudge is still part of the practice time
@@ -464,38 +511,41 @@ export default function TopicPractice({ voiceId }: Props) {
   // Ends the session (from "Stop practicing" or after a "Help me finish" example
   // plays) and reviews everything the user said for real grammar mistakes — shown
   // as text by default, with audio only synthesized if the user asks for it.
+  // The transcript is shown immediately; corrections stream in one segment at a
+  // time, since each one is a slow LLM pass and the total can run to minutes.
   async function finishSession() {
     fireConfetti();
     sessionActiveRef.current = false;
     pauseTimer();
     cleanupAll();
     setListening(false);
+    setStatus('');
+    setPhase('finished');
 
     const userTexts = topicHistoryRef.current
       .filter((m) => m.role === 'user')
       .map((m) => m.content);
-    if (userTexts.length > 0) {
-      setStatus('Reviewing what you said for grammar mistakes — this can take a couple of minutes…');
-      const reassure = window.setTimeout(() => {
-        setStatus('Still reviewing — the accuracy is worth the wait, hang tight…');
-      }, 20000);
-      try {
-        const results = await topicReview(userTexts);
-        setCorrections(results.filter((c) => c.has_errors));
-      } catch {
-        // best-effort — don't block finishing the session on this failing
-      } finally {
-        window.clearTimeout(reassure);
-      }
-    }
+    if (userTexts.length === 0) return;
 
-    setStatus('');
-    setPhase('finished');
+    const run = ++reviewRunRef.current;
+    setReview({ done: 0, total: userTexts.length });
+    for (const [i, text] of userTexts.entries()) {
+      try {
+        const results = await topicReview([text]);
+        if (reviewRunRef.current !== run) return;
+        setCorrections((cs) => [...cs, ...results.filter((c) => c.has_errors)]);
+      } catch {
+        // best-effort — a failed segment just shows no corrections
+      }
+      if (reviewRunRef.current !== run) return;
+      setReview({ done: i + 1, total: userTexts.length });
+    }
+    setReview(null);
   }
 
   function generatePdf() {
     fireConfetti();
-    downloadEssayPdf({
+    void downloadEssayPdf({
       topic,
       targetMinutes,
       elapsedSeconds,
@@ -504,9 +554,12 @@ export default function TopicPractice({ voiceId }: Props) {
   }
 
   function resetSession() {
+    reviewRunRef.current += 1;
+    releaseSessionAudio();
     setPhase('setup');
     setTranscriptTurns([]);
     setCorrections([]);
+    setReview(null);
     setElapsedSeconds(0);
     setError(null);
     setGaveUp(false);
@@ -595,8 +648,33 @@ export default function TopicPractice({ voiceId }: Props) {
               className="mt-1 w-full accent-sky-500"
             />
           </div>
-          {status && <p className="text-sm animate-pulse text-slate-500 dark:text-slate-400">{status}</p>}
-          {error && <p className="text-sm text-rose-500">{error}</p>}
+          <div>
+            <label className="text-sm font-medium text-slate-600 dark:text-slate-300">
+              Pause before Parlé jumps in: {stallSeconds} s
+            </label>
+            <input
+              type="range"
+              min={3}
+              max={12}
+              step={1}
+              value={stallSeconds}
+              onChange={(e) => setStallSeconds(Number(e.target.value))}
+              className="mt-1 w-full accent-sky-500"
+            />
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              How long you can go quiet mid-monologue before a nudge. Longer gives you more room to think.
+            </p>
+          </div>
+          {status && (
+            <p role="status" className="text-sm animate-pulse text-slate-500 dark:text-slate-400">
+              {status}
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-rose-500">
+              {error}
+            </p>
+          )}
           <button
             type="button"
             onClick={() => void startSession()}
@@ -626,7 +704,11 @@ export default function TopicPractice({ voiceId }: Props) {
               and mic only start once you hit record.
             </p>
           </div>
-          {error && <p className="text-sm text-rose-500">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-rose-500">
+              {error}
+            </p>
+          )}
           <button
             type="button"
             onClick={beginRecording}
@@ -694,8 +776,16 @@ export default function TopicPractice({ voiceId }: Props) {
             ))}
           </div>
           <div className="border-t border-slate-100 px-6 py-5 text-center dark:border-slate-800">
-            {status && <p className="mb-2 animate-pulse text-sm text-slate-500 dark:text-slate-400">{status}</p>}
-            {error && <p className="mb-2 text-sm text-rose-500">{error}</p>}
+            {status && (
+              <p role="status" className="mb-2 animate-pulse text-sm text-slate-500 dark:text-slate-400">
+                {status}
+              </p>
+            )}
+            {error && (
+              <p role="alert" className="mb-2 text-sm text-rose-500">
+                {error}
+              </p>
+            )}
             <p className="mb-3 text-sm font-medium text-slate-500 dark:text-slate-400">
               {gaveUp
                 ? busy
@@ -800,6 +890,23 @@ export default function TopicPractice({ voiceId }: Props) {
               </div>
             ))}
           </div>
+
+          {review && (
+            <p role="status" className="text-sm text-slate-500 dark:text-slate-400">
+              <span className="animate-pulse">Checking your grammar…</span>{' '}
+              <span className="tabular-nums text-slate-400 dark:text-slate-500">
+                {review.done}/{review.total} segments
+              </span>
+            </p>
+          )}
+          {!review && corrections.length === 0 && transcriptTurns.some((t) => t.role === 'user') && (
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">✅ No grammar mistakes found — nice.</p>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-rose-500">
+              {error}
+            </p>
+          )}
 
           {corrections.length > 0 && (
             <div className="space-y-3">

@@ -1,5 +1,3 @@
-import { jsPDF } from 'jspdf';
-
 function formatDuration(totalSeconds: number) {
   const m = Math.floor(totalSeconds / 60);
   const s = totalSeconds % 60;
@@ -20,13 +18,15 @@ function slugify(text: string) {
 // their own spoken segments plus any generated completions, concatenated into
 // one flowing essay (no speaker labels, no English gloss, no back-and-forth
 // nudges) — and triggers a browser download. Runs entirely client-side.
-export function downloadEssayPdf(params: {
+// jsPDF is ~350 kB and only needed here, so it's loaded on first use.
+export async function downloadEssayPdf(params: {
   topic: string;
   targetMinutes: number;
   elapsedSeconds: number;
   paragraphs: string[];
 }) {
   const { topic, targetMinutes, elapsedSeconds, paragraphs } = params;
+  const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const marginX = 56;
   const pageWidth = doc.internal.pageSize.getWidth();

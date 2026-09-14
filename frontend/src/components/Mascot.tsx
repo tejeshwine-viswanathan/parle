@@ -70,7 +70,7 @@ export default function Mascot({ thinking = false }: Props) {
       className="relative h-16 shrink-0 overflow-hidden border-t border-slate-100 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-800/30"
     >
       <div
-        className="absolute bottom-1 left-0 h-14 w-14 animate-[mascot-patrol_70s_linear_infinite]"
+        className="absolute bottom-1 left-0 h-14 w-14 animate-[mascot-patrol_70s_linear_infinite] motion-reduce:animate-none"
         style={pausedIfStill}
       >
         <svg viewBox="0 0 64 64" className="h-full w-full overflow-visible">
@@ -90,13 +90,13 @@ export default function Mascot({ thinking = false }: Props) {
             <>
               <g
                 style={{ transformOrigin: '24px 52px', ...pausedIfStill }}
-                className="animate-[mascot-step_1.2s_ease-in-out_infinite]"
+                className="animate-[mascot-step_1.2s_ease-in-out_infinite] motion-reduce:animate-none"
               >
                 <rect x={20} y={50} width={8} height={10} rx={4} fill={NAVY} />
               </g>
               <g
                 style={{ transformOrigin: '40px 52px', animationDelay: '0.6s', ...pausedIfStill }}
-                className="animate-[mascot-step_1.2s_ease-in-out_infinite]"
+                className="animate-[mascot-step_1.2s_ease-in-out_infinite] motion-reduce:animate-none"
               >
                 <rect x={36} y={50} width={8} height={10} rx={4} fill={NAVY} />
               </g>
@@ -107,8 +107,8 @@ export default function Mascot({ thinking = false }: Props) {
           <g
             className={
               isAsleep
-                ? 'animate-[mascot-sleep-breathe_2.4s_ease-in-out_infinite]'
-                : 'animate-[mascot-bob_1.2s_ease-in-out_infinite]'
+                ? 'animate-[mascot-sleep-breathe_2.4s_ease-in-out_infinite] motion-reduce:animate-none'
+                : 'animate-[mascot-bob_1.2s_ease-in-out_infinite] motion-reduce:animate-none'
             }
             style={{ transformOrigin: '32px 40px', ...(isAsleep ? {} : pausedIfStill) }}
           >
@@ -117,7 +117,7 @@ export default function Mascot({ thinking = false }: Props) {
             {/* arm + baguette (tucked away while asleep) */}
             {!isAsleep && (
               <g
-                className={isChewing ? 'animate-[mascot-chew_1.1s_ease-in-out_infinite]' : ''}
+                className={isChewing ? 'animate-[mascot-chew_1.1s_ease-in-out_infinite] motion-reduce:animate-none' : ''}
                 style={{ transformOrigin: '46px 42px' }}
               >
                 <circle cx={46} cy={42} r={4} fill={NAVY} />
@@ -176,7 +176,7 @@ export default function Mascot({ thinking = false }: Props) {
                 rx={2.2}
                 ry={1.6}
                 fill="#7A2E22"
-                className="animate-[mascot-mouth-chew_1.1s_ease-in-out_infinite]"
+                className="animate-[mascot-mouth-chew_1.1s_ease-in-out_infinite] motion-reduce:animate-none"
                 style={{ transformOrigin: '32px 43px' }}
               />
             ) : pose === 'whistle' ? (
@@ -188,7 +188,7 @@ export default function Mascot({ thinking = false }: Props) {
                 rx={3.2}
                 ry={3.4}
                 fill="#7A2E22"
-                className="animate-[mascot-yawn-mouth_1.3s_ease-in-out_infinite]"
+                className="animate-[mascot-yawn-mouth_1.3s_ease-in-out_infinite] motion-reduce:animate-none"
                 style={{ transformOrigin: '32px 44px' }}
               />
             ) : pose === 'sleep' ? (
@@ -216,7 +216,7 @@ export default function Mascot({ thinking = false }: Props) {
           {/* whistling notes */}
           {pose === 'whistle' && (
             <>
-              <text x={14} y={20} fontSize={9} fill="#0055A4" className="animate-[mascot-note_1.6s_ease-out_infinite]">
+              <text x={14} y={20} fontSize={9} fill="#0055A4" className="animate-[mascot-note_1.6s_ease-out_infinite] motion-reduce:animate-none">
                 ♪
               </text>
               <text
@@ -224,7 +224,7 @@ export default function Mascot({ thinking = false }: Props) {
                 y={14}
                 fontSize={7}
                 fill="#EF4135"
-                className="animate-[mascot-note_1.6s_ease-out_infinite]"
+                className="animate-[mascot-note_1.6s_ease-out_infinite] motion-reduce:animate-none"
                 style={{ animationDelay: '0.5s' }}
               >
                 ♪
@@ -241,7 +241,7 @@ export default function Mascot({ thinking = false }: Props) {
                 fontSize={10}
                 fontWeight={700}
                 fill={NAVY}
-                className="animate-[mascot-zzz_2.4s_ease-out_infinite]"
+                className="animate-[mascot-zzz_2.4s_ease-out_infinite] motion-reduce:animate-none"
               >
                 z
               </text>
@@ -251,7 +251,7 @@ export default function Mascot({ thinking = false }: Props) {
                 fontSize={7}
                 fontWeight={700}
                 fill={NAVY}
-                className="animate-[mascot-zzz_2.4s_ease-out_infinite]"
+                className="animate-[mascot-zzz_2.4s_ease-out_infinite] motion-reduce:animate-none"
                 style={{ animationDelay: '0.9s' }}
               >
                 z
