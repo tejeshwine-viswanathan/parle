@@ -13,14 +13,22 @@ from __future__ import annotations
 import re
 from typing import TypedDict
 
-from ollama import Client
-
-from . import config
+from . import llm
 from .stt import Transcription, Word
 
 # Below this word-level confidence, faster-whisper was guessing — likely because
 # the pronunciation was off enough to obscure the word.
 CONFIDENCE_THRESHOLD = 0.6
+
+# Short function words get low confidence from the small Whisper model even when
+# pronounced perfectly, and a tip on "que" or "mais" is noise rather than coaching.
+MIN_WORD_LENGTH = 3
+_SKIP_WORDS = {
+    "que", "qui", "quoi", "pour", "mais", "avec", "dans", "sur", "sous", "par",
+    "des", "les", "une", "est", "sont", "pas", "plus", "très", "bien", "aussi",
+    "moi", "toi", "lui", "elle", "nous", "vous", "ils", "elles", "ça", "cela",
+    "c'est", "j'ai", "il", "et", "ou", "où",
+}
 
 # Checked in order; the first pattern that matches a flagged word wins. Patterns
 # are simple substrings/regexes over the lowercased word, not a real phonemizer.
@@ -38,34 +46,19 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"[td]$"), "many final consonants are silent in French unless followed by 'e' or a liaison."),
 ]
 
-_client: Client | None = None
-
-
-def _get_client() -> Client:
-    global _client
-    if _client is None:
-        _client = Client(host=config.OLLAMA_HOST)
-    return _client
-
-
 def _fallback_tip(word: str) -> str:
     """Ask the local model for a short tip when no known pattern matches."""
-    messages = [
-        {
-            "role": "user",
-            "content": (
-                "In one short, plain-language sentence, give an English-speaking "
-                f"French learner a pronunciation tip for the French word '{word}'."
-            ),
-        }
-    ]
-    response = _get_client().chat(
-        model=config.OLLAMA_MODEL,
-        messages=messages,
-        think=False,
-        keep_alive=config.OLLAMA_KEEP_ALIVE,
+    return llm.chat(
+        [
+            {
+                "role": "user",
+                "content": (
+                    "In one short, plain-language sentence, give an English-speaking "
+                    f"French learner a pronunciation tip for the French word '{word}'."
+                ),
+            }
+        ]
     )
-    return response["message"]["content"].strip()
 
 
 def _tip_for(word: str) -> str:
@@ -90,7 +83,12 @@ def analyze(transcription: Transcription) -> list[PronunciationNote]:
 
 
 def _is_flagged(word: Word) -> bool:
-    return len(word["word"].strip()) > 1 and word["probability"] < CONFIDENCE_THRESHOLD
+    cleaned = word["word"].strip().strip(".,!?;:").lower()
+    return (
+        len(cleaned) >= MIN_WORD_LENGTH
+        and cleaned not in _SKIP_WORDS
+        and word["probability"] < CONFIDENCE_THRESHOLD
+    )
 
 
 def _note_for(word: Word) -> PronunciationNote:

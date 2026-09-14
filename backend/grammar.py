@@ -24,11 +24,10 @@ eliminates the entire class of "rewrote things I never flagged as wrong".
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import TypedDict
 
-from ollama import Client
-
-from . import config
+from . import config, llm
 
 SYSTEM_PROMPT = """Tu es un correcteur grammatical. Tu ne discutes JAMAIS avec \
 l'utilisateur. On te donne une phrase française prononcée par un apprenant, encadrée \
@@ -74,15 +73,6 @@ _ERROR_LINE = re.compile(r"FAUX:\s*(.+?)\s*=>\s*CORRECT:\s*(.+?)\s*$", re.IGNORE
 # to guard against explicitly rather than trust the prompt alone.
 _TU_WORDS = {"tu", "toi", "ton", "ta", "tes", "te", "t'"}
 
-_client: Client | None = None
-
-
-def get_client() -> Client:
-    global _client
-    if _client is None:
-        _client = Client(host=config.OLLAMA_HOST)
-    return _client
-
 
 def _shifts_formality(wrong: str, correct: str) -> bool:
     wrong_words = {w.strip(".,!?;:\"'").lower() for w in wrong.split()}
@@ -97,14 +87,20 @@ def _find_fixes(text: str) -> list[tuple[str, str]]:
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"<<<{text}>>>"},
     ]
-    response = get_client().chat(
+    # The format *requires* the model to copy the faulty span verbatim, so a high
+    # repeat penalty (which punishes reusing input tokens) works directly against
+    # it and produces spans that fail the `wrong not in text` check below.
+    raw = llm.chat(
+        messages,
         model=config.GRAMMAR_MODEL,
-        messages=messages,
-        think=False,
-        keep_alive=config.OLLAMA_KEEP_ALIVE,
-        options={"temperature": 0.0, "num_predict": 200, "repeat_penalty": 1.3},
+        options={"temperature": 0.0, "num_predict": 200, "repeat_penalty": 1.1},
     )
-    raw = response["message"]["content"].strip()
+    return parse_fixes(text, raw)
+
+
+def parse_fixes(text: str, raw: str) -> list[tuple[str, str]]:
+    """Parse the model's FAUX/CORRECT lines for `text`, keeping only fixes that
+    verifiably quote the source and don't rewrite it wholesale."""
     if not raw or raw.strip(" .!\"'«»").upper() == "AUCUNE":
         return []
 
@@ -196,9 +192,11 @@ def review(text: str) -> Correction:
     """Grammar-correct `text`: find real errors sentence-by-sentence, apply
     only the ones that verifiably quote the source, and diff-free segment the
     result for display."""
-    all_fixes: list[tuple[str, str]] = []
-    for sentence in _split_sentences(text):
-        all_fixes.extend(_find_fixes(sentence))
+    # Sentences are independent, so review them concurrently — a no-op cost if
+    # the Ollama server serialises requests, a real speedup if it doesn't.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        per_sentence = list(pool.map(_find_fixes, _split_sentences(text)))
+    all_fixes = [fix for fixes in per_sentence for fix in fixes]
 
     corrected, segments = _apply_fixes(text, all_fixes)
     return {

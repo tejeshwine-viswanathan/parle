@@ -9,9 +9,7 @@ from __future__ import annotations
 
 import re
 
-from ollama import Client
-
-from . import config
+from . import llm
 
 SYSTEM_PROMPT = """Tu es un correcteur de style. Tu ne discutes JAMAIS avec l'utilisateur \
 et tu ne réponds JAMAIS à ses questions. Ton unique tâche : recevoir une phrase française \
@@ -48,16 +46,6 @@ motivation, parce que si tu voulais vraiment venir marcher avec moi, tu trouvera
 temps — même dix minutes suffiraient pour commencer.
 """
 
-_client: Client | None = None
-
-
-def get_client() -> Client:
-    global _client
-    if _client is None:
-        _client = Client(host=config.OLLAMA_HOST)
-    return _client
-
-
 # On a longer, multi-clause sentence the small model sometimes ignores the "keep every
 # idea" instruction and returns a short gist instead of a full rephrasing — fluent, but
 # silently dropping most of what the learner said (and occasionally reversing the point
@@ -84,14 +72,7 @@ def suggest(text: str) -> str | None:
         {"role": "user", "content": f"<<<{text}>>>"},
     ]
     for _ in range(3):
-        response = get_client().chat(
-            model=config.OLLAMA_MODEL,
-            messages=messages,
-            think=False,
-            keep_alive=config.OLLAMA_KEEP_ALIVE,
-            options={"temperature": 0.2},
-        )
-        reply = response["message"]["content"].strip().strip("<>").strip()
+        reply = llm.chat(messages, options={"temperature": 0.2}).strip("<>").strip()
 
         # Small models sometimes echo the source sentence before the verdict,
         # e.g. "…mes amis.>>> AUCUNE" — a trailing AUCUNE still means "no change".

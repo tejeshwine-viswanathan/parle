@@ -18,6 +18,10 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 # How long Ollama keeps the model loaded in (V)RAM after the last request,
 # so a whole practice session doesn't pay the model-load cost on every turn.
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+# Context window for every chat call. Ollama defaults to 2048 tokens, which a
+# practice session outgrows in ~15 turns — at that point the oldest tokens (the
+# system prompt) are silently dropped and the tutor stops following its rules.
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
 # Grammar correction (backend/grammar.py) is a harder task for a small model than
 # the tutor/translation prompts — small models are unreliable at it, sometimes
 # even "correcting" already-right sentences into wrong ones. Defaults to the main
@@ -35,8 +39,6 @@ WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 # Text-to-speech (Piper)
 PIPER_VOICE_NAME = os.getenv("PIPER_VOICE_NAME", "fr_FR-siwis-medium")
 PIPER_VOICES_DIR = Path(os.getenv("PIPER_VOICES_DIR", BACKEND_DIR / "voices"))
-PIPER_MODEL_PATH = PIPER_VOICES_DIR / f"{PIPER_VOICE_NAME}.onnx"
-PIPER_CONFIG_PATH = PIPER_VOICES_DIR / f"{PIPER_VOICE_NAME}.onnx.json"
 PIPER_USE_CUDA = os.getenv("PIPER_USE_CUDA", "false").lower() == "true"
 
 # Local data storage (session history, never leaves the machine)

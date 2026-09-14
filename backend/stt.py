@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import TypedDict
 
@@ -10,18 +11,25 @@ from faster_whisper import WhisperModel
 from . import config
 
 _model: WhisperModel | None = None
+_model_lock = threading.Lock()
 
 # faster-whisper (like upstream Whisper) was trained on a lot of Amara.org-subtitled
 # video, and hallucinates these stock phrases on silence or near-silent audio instead
 # of returning nothing. VAD filtering (below) catches most of it; this is a backstop
-# for whatever slips through.
-_HALLUCINATION_PHRASES = [
-    "sous-titres réalisés par la communauté d'amara.org",
-    "sous-titrage st' 501",
-    "merci d'avoir regardé cette vidéo",
+# for whatever slips through. Matched as substrings so spelling/casing variants
+# ("Sous-titres réalisés para la communauté d'Amara.org") are caught too.
+_HALLUCINATION_MARKERS = [
+    "amara.org",
+    "sous-titrage st'",
+    "sous-titres réalisés",
     "merci d'avoir regardé",
     "abonnez-vous",
 ]
+
+
+def is_hallucination(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _HALLUCINATION_MARKERS)
 
 
 class Word(TypedDict):
@@ -40,13 +48,14 @@ class Transcription(TypedDict):
 
 def get_model() -> WhisperModel:
     global _model
-    if _model is None:
-        _model = WhisperModel(
-            config.WHISPER_MODEL_SIZE,
-            device=config.WHISPER_DEVICE,
-            compute_type=config.WHISPER_COMPUTE_TYPE,
-        )
-    return _model
+    with _model_lock:
+        if _model is None:
+            _model = WhisperModel(
+                config.WHISPER_MODEL_SIZE,
+                device=config.WHISPER_DEVICE,
+                compute_type=config.WHISPER_COMPUTE_TYPE,
+            )
+        return _model
 
 
 def transcribe(audio_path: str | Path, language: str = "fr") -> Transcription:
@@ -61,11 +70,7 @@ def transcribe(audio_path: str | Path, language: str = "fr") -> Transcription:
         word_timestamps=True,
         vad_filter=True,
     )
-    segments = [
-        segment
-        for segment in segments
-        if segment.text.strip().lower().strip(".!? ") not in _HALLUCINATION_PHRASES
-    ]
+    segments = [segment for segment in segments if not is_hallucination(segment.text)]
 
     words: list[Word] = [
         {

@@ -13,6 +13,7 @@ with no persona to break out of.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Literal
 
 import argostranslate.translate
@@ -25,6 +26,9 @@ _LANGS: dict[Direction, tuple[str, str]] = {
 }
 
 
+# get_installed_languages() rescans the package directory on disk every call;
+# the translation objects themselves are safe to hold for the process lifetime.
+@lru_cache(maxsize=None)
 def _get_translation(from_code: str, to_code: str) -> argostranslate.translate.ITranslation:
     installed = argostranslate.translate.get_installed_languages()
     from_lang = next((lang for lang in installed if lang.code == from_code), None)
@@ -42,3 +46,9 @@ def translate(text: str, direction: Direction) -> str:
     """Translate `text` between French and English using a local MT model."""
     from_code, to_code = _LANGS[direction]
     return _get_translation(from_code, to_code).translate(text).strip()
+
+
+def warm_up() -> None:
+    """Load both translation directions so the first request doesn't pay for it."""
+    for from_code, to_code in _LANGS.values():
+        _get_translation(from_code, to_code)

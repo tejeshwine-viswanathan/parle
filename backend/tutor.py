@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from ollama import Client
-
-from . import config
+from . import llm
+from .llm import Message
 
 SYSTEM_PROMPT = """Tu es Parlé, un tuteur de français patient et encourageant pour un \
 apprenant anglophone de niveau débutant à intermédiaire.
@@ -87,33 +86,19 @@ Ta tâche maintenant : lance la conversation en restant dans le personnage — u
 phrases pour amorcer l'échange selon le scénario ci-dessus. Réponds UNIQUEMENT avec cette \
 réplique en français, rien d'autre."""
 
-Message = dict[str, str]
+# Only the most recent turns are sent back to the model. Older ones add latency
+# and context pressure without helping a short-reply tutor much.
+MAX_HISTORY_MESSAGES = 24
 
-_client: Client | None = None
 
-
-def get_client() -> Client:
-    global _client
-    if _client is None:
-        _client = Client(host=config.OLLAMA_HOST)
-    return _client
+def _recent(history: list[Message]) -> list[Message]:
+    return history[-MAX_HISTORY_MESSAGES:]
 
 
 def get_response(history: list[Message], user_text: str) -> str:
     """Given prior turns and the learner's latest French utterance, return the
     tutor's French reply (a comment/correction plus a follow-up question)."""
-    messages: list[Message] = (
-        [{"role": "system", "content": SYSTEM_PROMPT}]
-        + history
-        + [{"role": "user", "content": user_text}]
-    )
-    response = get_client().chat(
-        model=config.OLLAMA_MODEL,
-        messages=messages,
-        think=False,
-        keep_alive=config.OLLAMA_KEEP_ALIVE,
-    )
-    return response["message"]["content"].strip()
+    return _chat(SYSTEM_PROMPT, _recent(history) + [{"role": "user", "content": user_text}])
 
 
 def start_scenario(scenario: str) -> str:
@@ -128,19 +113,11 @@ def get_scenario_response(scenario: str, history: list[Message], user_text: str)
     """Given prior turns and the learner's latest utterance, return the
     in-character reply for an active roleplay scenario."""
     prompt = SCENARIO_SYSTEM_PROMPT.format(scenario=scenario)
-    return _chat(prompt, history + [{"role": "user", "content": user_text}])
+    return _chat(prompt, _recent(history) + [{"role": "user", "content": user_text}])
 
 
 def _chat(system_prompt: str, history: list[Message], options: dict | None = None) -> str:
-    messages: list[Message] = [{"role": "system", "content": system_prompt}] + history
-    response = get_client().chat(
-        model=config.OLLAMA_MODEL,
-        messages=messages,
-        think=False,
-        keep_alive=config.OLLAMA_KEEP_ALIVE,
-        options=options,
-    )
-    return response["message"]["content"].strip()
+    return llm.chat([{"role": "system", "content": system_prompt}] + history, options=options)
 
 
 def start_topic(topic: str, target_minutes: float) -> str:
@@ -155,7 +132,7 @@ def start_topic(topic: str, target_minutes: float) -> str:
 def nudge_topic(topic: str, history: list[Message]) -> str:
     """The learner stalled mid-monologue; give a brief nudge to keep them talking."""
     prompt = TOPIC_NUDGE_PROMPT.format(topic=topic)
-    return _chat(prompt, history)
+    return _chat(prompt, _recent(history))
 
 
 # Rough spoken-French pace for the Piper voices we ship (words/minute) — used to size

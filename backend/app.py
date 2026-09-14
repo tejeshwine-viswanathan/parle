@@ -7,18 +7,50 @@ Run from the repo root with the backend venv active:
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import tempfile
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from starlette.background import BackgroundTask
 
 from . import config, grammar, phrasing, pronunciation, stt, translate, tts, tutor
 
-app = FastAPI(title="Parlé backend")
+log = logging.getLogger(__name__)
+
+# Whisper, Piper and Argos each take seconds to tens of seconds to load. Start
+# them in the background at boot so the first real request doesn't pay for it,
+# and expose progress on /health so the UI can say "loading models…".
+_model_status: dict[str, str] = {"stt": "loading", "tts": "loading", "translate": "loading"}
+
+
+def _warm_models() -> None:
+    for name, loader in (
+        ("stt", stt.get_model),
+        ("tts", tts.get_voice),
+        ("translate", translate.warm_up),
+    ):
+        try:
+            loader()
+            _model_status[name] = "ready"
+        except Exception as err:  # noqa: BLE001 — surface any load failure on /health
+            log.warning("%s failed to load: %s", name, err)
+            _model_status[name] = f"error: {err}"
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    threading.Thread(target=_warm_models, name="warm-models", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Parlé backend", lifespan=lifespan)
 
 # Local-only app; the frontend dev server runs on a different origin.
 app.add_middleware(
@@ -30,7 +62,7 @@ app.add_middleware(
 
 
 class Message(BaseModel):
-    role: str
+    role: Literal["user", "assistant"]
     content: str
 
 
@@ -129,20 +161,34 @@ class PhrasingResponse(BaseModel):
     suggestion: str | None
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+class HealthResponse(BaseModel):
+    status: str
+    ready: bool
+    models: dict[str, str]
 
 
+@app.get("/health", response_model=HealthResponse)
+def health() -> HealthResponse:
+    return HealthResponse(
+        status="ok",
+        ready=all(state == "ready" for state in _model_status.values()),
+        models=dict(_model_status),
+    )
+
+
+# Plain `def` on purpose: FastAPI runs sync handlers in a threadpool, whereas an
+# `async def` doing CPU-bound Whisper work would block the event loop and stall
+# every other request for the duration of the transcription.
 @app.post("/transcribe", response_model=TranscribeResponse)
-async def transcribe(audio: UploadFile, language: str = Form("fr")) -> TranscribeResponse:
+def transcribe(audio: UploadFile, language: Literal["fr", "en"] = Form("fr")) -> TranscribeResponse:
     """Transcribe an uploaded audio clip (French by default; the Translate-to-learn
     tab also sends English clips via `language=en`). French transcriptions also get
-    best-effort pronunciation notes on words the model struggled with."""
+    best-effort pronunciation notes on words the model struggled with. An empty
+    `text` means no speech was recognised — that's a normal outcome, not an error."""
     suffix = Path(audio.filename or "audio.wav").suffix or ".wav"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = Path(tmp.name)
-        tmp.write(await audio.read())
+        tmp.write(audio.file.read())
 
     try:
         transcription = stt.transcribe(tmp_path, language=language)
@@ -150,7 +196,7 @@ async def transcribe(audio: UploadFile, language: str = Form("fr")) -> Transcrib
         tmp_path.unlink(missing_ok=True)
 
     if not transcription["text"]:
-        raise HTTPException(status_code=422, detail="No speech recognized in audio")
+        return {**transcription, "notes": []}
 
     notes = pronunciation.analyze(transcription) if language == "fr" else []
     return {**transcription, "notes": notes}
@@ -192,27 +238,50 @@ def scenario_respond(req: ScenarioRespondRequest) -> TutorResponse:
     return TutorResponse(reply=reply)
 
 
+TTS_CACHE_DIR = config.DATA_DIR / "tts_cache"
+# Replays, "Hear it" buttons and voice switches all re-request the same text, so
+# keep the synthesized WAVs on disk keyed by (voice, text). Bounded so a long
+# stretch of practice doesn't quietly fill the drive.
+TTS_CACHE_MAX_FILES = 500
+_tts_lock = threading.Lock()
+
+
+def _prune_tts_cache() -> None:
+    files = sorted(TTS_CACHE_DIR.glob("*.wav"), key=lambda p: p.stat().st_mtime)
+    for stale in files[: max(0, len(files) - TTS_CACHE_MAX_FILES)]:
+        stale.unlink(missing_ok=True)
+
+
 @app.post("/speak")
 def speak(req: SpeakRequest) -> FileResponse:
-    if not req.text.strip():
+    text = req.text.strip()
+    if not text:
         raise HTTPException(status_code=422, detail="text must not be empty")
 
-    output_dir = config.DATA_DIR / "tts_cache"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(suffix=".wav", dir=output_dir, delete=False) as tmp:
-        output_path = Path(tmp.name)
+    voice_id = req.voice or config.PIPER_VOICE_NAME
+    key = hashlib.sha256(f"{voice_id}\n{text}".encode()).hexdigest()
+    output_path = TTS_CACHE_DIR / f"{key}.wav"
 
-    try:
-        tts.synthesize(req.text, output_path, voice_id=req.voice)
-    except FileNotFoundError as err:
-        output_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=str(err)) from err
-    return FileResponse(
-        output_path,
-        media_type="audio/wav",
-        filename="speech.wav",
-        background=BackgroundTask(output_path.unlink),
-    )
+    if not output_path.exists():
+        TTS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        # Write to a temp name and rename so a half-written file is never served.
+        with tempfile.NamedTemporaryFile(suffix=".tmp", dir=TTS_CACHE_DIR, delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            tts.synthesize(text, tmp_path, voice_id=voice_id)
+            tmp_path.replace(output_path)
+        except FileNotFoundError as err:
+            tmp_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=422, detail=str(err)) from err
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+        with _tts_lock:
+            _prune_tts_cache()
+    else:
+        output_path.touch()  # bump mtime so hot clips survive pruning
+
+    return FileResponse(output_path, media_type="audio/wav", filename="speech.wav")
 
 
 @app.post("/topic-complete", response_model=TopicCompleteResponse)

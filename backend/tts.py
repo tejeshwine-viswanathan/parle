@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +28,7 @@ KNOWN_VOICES = [
 ]
 
 _voices: dict[str, PiperVoice] = {}
+_voices_lock = threading.Lock()
 
 
 def _voice_paths(voice_id: str) -> tuple[Path, Path]:
@@ -43,20 +45,25 @@ def list_voices() -> list[VoiceOption]:
 
 def get_voice(voice_id: str | None = None) -> PiperVoice:
     voice_id = voice_id or config.PIPER_VOICE_NAME
-    if voice_id not in _voices:
-        model_path, config_path = _voice_paths(voice_id)
-        if not model_path.exists():
-            raise FileNotFoundError(
-                f"Piper voice model not found at {model_path}. "
-                f"Download it with: python -m piper.download_voices "
-                f"--download-dir {config.PIPER_VOICES_DIR} {voice_id}"
+    # The id becomes a filename, so only ever accept one we ship — otherwise a
+    # request could point the loader at any .onnx file on disk via "../".
+    if voice_id not in {v.id for v in KNOWN_VOICES}:
+        raise FileNotFoundError(f"Unknown voice: {voice_id!r}")
+    with _voices_lock:
+        if voice_id not in _voices:
+            model_path, config_path = _voice_paths(voice_id)
+            if not model_path.exists():
+                raise FileNotFoundError(
+                    f"Piper voice model not found at {model_path}. "
+                    f"Download it with: python -m piper.download_voices "
+                    f"--download-dir {config.PIPER_VOICES_DIR} {voice_id}"
+                )
+            _voices[voice_id] = PiperVoice.load(
+                model_path,
+                config_path=config_path,
+                use_cuda=config.PIPER_USE_CUDA,
             )
-        _voices[voice_id] = PiperVoice.load(
-            model_path,
-            config_path=config_path,
-            use_cuda=config.PIPER_USE_CUDA,
-        )
-    return _voices[voice_id]
+        return _voices[voice_id]
 
 
 def synthesize(text: str, output_path: str | Path, voice_id: str | None = None) -> Path:
@@ -70,5 +77,7 @@ def synthesize(text: str, output_path: str | Path, voice_id: str | None = None) 
     sample_rate = chunks[0].sample_rate
 
     output_path = Path(output_path)
-    sf.write(output_path, audio, sample_rate)
+    # Explicit format: callers write to a temp name first, so the extension
+    # isn't always .wav for soundfile to infer from.
+    sf.write(output_path, audio, sample_rate, format="WAV")
     return output_path
