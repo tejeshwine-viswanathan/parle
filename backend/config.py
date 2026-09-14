@@ -18,6 +18,14 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 # How long Ollama keeps the model loaded in (V)RAM after the last request,
 # so a whole practice session doesn't pay the model-load cost on every turn.
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+# Grammar correction (backend/grammar.py) is a harder task for a small model than
+# the tutor/translation prompts — small models are unreliable at it, sometimes
+# even "correcting" already-right sentences into wrong ones. Defaults to the main
+# model so a fresh clone works with only one model pulled; set this to a larger
+# model you already have (e.g. `mistral:7b`, or `gemma4:26b`/similar for the best
+# accuracy we've seen — at the cost of ~2min to load cold, ~15s per sentence warm)
+# if you want more reliable corrections.
+GRAMMAR_MODEL = os.getenv("GRAMMAR_MODEL", OLLAMA_MODEL)
 
 # Speech-to-text (faster-whisper)
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "small")

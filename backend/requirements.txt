@@ -7,6 +7,9 @@ piper-tts>=1.8.0
 # Local LLM client (Ollama must be installed and running separately)
 ollama>=0.6.2
 
+# Translation — offline MT model, no LLM (see scripts/install_translate_models.py)
+argostranslate>=1.11.0
+
 # Backend API
 fastapi>=0.121.2
 uvicorn[standard]>=0.38.0

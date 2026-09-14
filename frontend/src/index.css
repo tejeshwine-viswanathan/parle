@@ -1,9 +1,132 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   color-scheme: light;
 }
 
 body {
   margin: 0;
+}
+
+@keyframes mic-eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes mascot-patrol {
+  0% {
+    transform: translateX(0) scaleX(1);
+  }
+  49% {
+    transform: translateX(calc(100vw - 6rem)) scaleX(1);
+  }
+  50% {
+    transform: translateX(calc(100vw - 6rem)) scaleX(-1);
+  }
+  99% {
+    transform: translateX(0) scaleX(-1);
+  }
+  100% {
+    transform: translateX(0) scaleX(1);
+  }
+}
+
+@keyframes mascot-bob {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    transform: translateY(-2px) scaleY(1.03);
+  }
+}
+
+@keyframes mascot-step {
+  0%,
+  100% {
+    transform: rotate(-18deg);
+  }
+  50% {
+    transform: rotate(18deg);
+  }
+}
+
+@keyframes mascot-chew {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  30%,
+  55% {
+    transform: translate(-3px, -5px) rotate(-10deg);
+  }
+  80% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+@keyframes mascot-mouth-chew {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+  }
+  40%,
+  60% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes mascot-note {
+  0% {
+    transform: translate(0, 0) rotate(-6deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(6px, -24px) rotate(6deg);
+    opacity: 0;
+  }
+}
+
+@keyframes mascot-yawn-mouth {
+  0%,
+  100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1.15);
+  }
+}
+
+@keyframes mascot-sleep-breathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.04);
+  }
+}
+
+@keyframes mascot-zzz {
+  0% {
+    transform: translate(0, 0) scale(0.6);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(10px, -26px) scale(1.15);
+    opacity: 0;
+  }
 }

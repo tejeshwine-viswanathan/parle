@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -10,29 +11,57 @@ from piper import PiperVoice
 
 from . import config
 
-_voice: PiperVoice | None = None
+
+@dataclass(frozen=True)
+class VoiceOption:
+    id: str
+    label: str
+    gender: str
 
 
-def get_voice() -> PiperVoice:
-    global _voice
-    if _voice is None:
-        if not config.PIPER_MODEL_PATH.exists():
+# Known voices we ship instructions/config for. Only ones whose model files are
+# actually present under PIPER_VOICES_DIR are ever returned by list_voices().
+KNOWN_VOICES = [
+    VoiceOption("fr_FR-siwis-medium", "Siwis", "female"),
+    VoiceOption("fr_FR-gilles-low", "Gilles", "male"),
+]
+
+_voices: dict[str, PiperVoice] = {}
+
+
+def _voice_paths(voice_id: str) -> tuple[Path, Path]:
+    return (
+        config.PIPER_VOICES_DIR / f"{voice_id}.onnx",
+        config.PIPER_VOICES_DIR / f"{voice_id}.onnx.json",
+    )
+
+
+def list_voices() -> list[VoiceOption]:
+    """Voices we know about whose model files are actually downloaded."""
+    return [v for v in KNOWN_VOICES if _voice_paths(v.id)[0].exists()]
+
+
+def get_voice(voice_id: str | None = None) -> PiperVoice:
+    voice_id = voice_id or config.PIPER_VOICE_NAME
+    if voice_id not in _voices:
+        model_path, config_path = _voice_paths(voice_id)
+        if not model_path.exists():
             raise FileNotFoundError(
-                f"Piper voice model not found at {config.PIPER_MODEL_PATH}. "
+                f"Piper voice model not found at {model_path}. "
                 f"Download it with: python -m piper.download_voices "
-                f"--download-dir {config.PIPER_VOICES_DIR} {config.PIPER_VOICE_NAME}"
+                f"--download-dir {config.PIPER_VOICES_DIR} {voice_id}"
             )
-        _voice = PiperVoice.load(
-            config.PIPER_MODEL_PATH,
-            config_path=config.PIPER_CONFIG_PATH,
+        _voices[voice_id] = PiperVoice.load(
+            model_path,
+            config_path=config_path,
             use_cuda=config.PIPER_USE_CUDA,
         )
-    return _voice
+    return _voices[voice_id]
 
 
-def synthesize(text: str, output_path: str | Path) -> Path:
+def synthesize(text: str, output_path: str | Path, voice_id: str | None = None) -> Path:
     """Synthesize French text to a WAV file and return its path."""
-    voice = get_voice()
+    voice = get_voice(voice_id)
     chunks = list(voice.synthesize(text))
     if not chunks:
         raise ValueError("Piper produced no audio for the given text")

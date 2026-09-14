@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from . import config, pronunciation, stt, translate, tts, tutor
+from . import config, grammar, phrasing, pronunciation, stt, translate, tts, tutor
 
 app = FastAPI(title="Parlé backend")
 
@@ -52,12 +52,81 @@ class TutorResponse(BaseModel):
     reply: str
 
 
+class ScenarioStartRequest(BaseModel):
+    scenario: str
+
+
+class ScenarioRespondRequest(BaseModel):
+    scenario: str
+    history: list[Message] = []
+    user_text: str
+
+
 class SpeakRequest(BaseModel):
     text: str
+    voice: str | None = None
+
+
+class VoiceInfo(BaseModel):
+    id: str
+    label: str
+    gender: str
+
+
+class TopicStartRequest(BaseModel):
+    topic: str
+    target_minutes: float = 3
+
+
+class TopicNudgeRequest(BaseModel):
+    topic: str
+    history: list[Message] = []
+
+
+class TopicReplyResponse(BaseModel):
+    reply: str
+
+
+class TopicCompleteRequest(BaseModel):
+    topic: str
+    history: list[Message] = []
+    remaining_minutes: float = 1
+
+
+class TopicCompleteResponse(BaseModel):
+    completion: str
+
+
+class TopicReviewRequest(BaseModel):
+    texts: list[str]
+
+
+class ReviewSegment(BaseModel):
+    text: str
+    wrong: bool
+
+
+class ReviewCorrection(BaseModel):
+    original: str
+    corrected: str
+    segments: list[ReviewSegment]
+    has_errors: bool
+
+
+class TopicReviewResponse(BaseModel):
+    corrections: list[ReviewCorrection]
 
 
 class TranscribeResponse(stt.Transcription):
     notes: list[pronunciation.PronunciationNote]
+
+
+class PhrasingRequest(BaseModel):
+    text: str
+
+
+class PhrasingResponse(BaseModel):
+    suggestion: str | None
 
 
 @app.get("/health")
@@ -104,6 +173,25 @@ def tutor_respond(req: TutorRequest) -> TutorResponse:
     return TutorResponse(reply=reply)
 
 
+@app.post("/scenario-start", response_model=TopicReplyResponse)
+def scenario_start(req: ScenarioStartRequest) -> TopicReplyResponse:
+    if not req.scenario.strip():
+        raise HTTPException(status_code=422, detail="scenario must not be empty")
+    reply = tutor.start_scenario(req.scenario)
+    return TopicReplyResponse(reply=reply)
+
+
+@app.post("/scenario-respond", response_model=TutorResponse)
+def scenario_respond(req: ScenarioRespondRequest) -> TutorResponse:
+    if not req.scenario.strip():
+        raise HTTPException(status_code=422, detail="scenario must not be empty")
+    if not req.user_text.strip():
+        raise HTTPException(status_code=422, detail="user_text must not be empty")
+    history = [message.model_dump() for message in req.history]
+    reply = tutor.get_scenario_response(req.scenario, history, req.user_text)
+    return TutorResponse(reply=reply)
+
+
 @app.post("/speak")
 def speak(req: SpeakRequest) -> FileResponse:
     if not req.text.strip():
@@ -114,10 +202,58 @@ def speak(req: SpeakRequest) -> FileResponse:
     with tempfile.NamedTemporaryFile(suffix=".wav", dir=output_dir, delete=False) as tmp:
         output_path = Path(tmp.name)
 
-    tts.synthesize(req.text, output_path)
+    try:
+        tts.synthesize(req.text, output_path, voice_id=req.voice)
+    except FileNotFoundError as err:
+        output_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail=str(err)) from err
     return FileResponse(
         output_path,
         media_type="audio/wav",
         filename="speech.wav",
         background=BackgroundTask(output_path.unlink),
     )
+
+
+@app.post("/topic-complete", response_model=TopicCompleteResponse)
+def topic_complete(req: TopicCompleteRequest) -> TopicCompleteResponse:
+    if not req.topic.strip():
+        raise HTTPException(status_code=422, detail="topic must not be empty")
+    history = [message.model_dump() for message in req.history]
+    completion = tutor.complete_monologue(req.topic, history, req.remaining_minutes)
+    return TopicCompleteResponse(completion=completion)
+
+
+@app.post("/topic-review", response_model=TopicReviewResponse)
+def topic_review(req: TopicReviewRequest) -> TopicReviewResponse:
+    corrections = [grammar.review(t) for t in req.texts if t.strip()]
+    return TopicReviewResponse(corrections=corrections)
+
+
+@app.post("/phrasing-suggestion", response_model=PhrasingResponse)
+def phrasing_suggestion(req: PhrasingRequest) -> PhrasingResponse:
+    if not req.text.strip():
+        raise HTTPException(status_code=422, detail="text must not be empty")
+    return PhrasingResponse(suggestion=phrasing.suggest(req.text))
+
+
+@app.get("/voices", response_model=list[VoiceInfo])
+def list_voices() -> list[VoiceInfo]:
+    return [VoiceInfo(id=v.id, label=v.label, gender=v.gender) for v in tts.list_voices()]
+
+
+@app.post("/topic-start", response_model=TopicReplyResponse)
+def topic_start(req: TopicStartRequest) -> TopicReplyResponse:
+    if not req.topic.strip():
+        raise HTTPException(status_code=422, detail="topic must not be empty")
+    reply = tutor.start_topic(req.topic, req.target_minutes)
+    return TopicReplyResponse(reply=reply)
+
+
+@app.post("/topic-nudge", response_model=TopicReplyResponse)
+def topic_nudge(req: TopicNudgeRequest) -> TopicReplyResponse:
+    if not req.topic.strip():
+        raise HTTPException(status_code=422, detail="topic must not be empty")
+    history = [message.model_dump() for message in req.history]
+    reply = tutor.nudge_topic(req.topic, history)
+    return TopicReplyResponse(reply=reply)

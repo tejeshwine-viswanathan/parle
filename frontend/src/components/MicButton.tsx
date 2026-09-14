@@ -5,6 +5,8 @@ type Props = {
   disabled?: boolean;
 };
 
+const BAR_COLORS = ['#0055A4', '#ED2939', '#94A3B8', '#ED2939', '#0055A4'];
+
 export default function MicButton({ onRecordingComplete, disabled }: Props) {
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,17 +68,40 @@ export default function MicButton({ onRecordingComplete, disabled }: Props) {
         type="button"
         disabled={disabled}
         onClick={toggleRecording}
-        className={`h-24 w-24 select-none rounded-full text-4xl shadow-lg transition-all
-          duration-150 focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
+        className={`flex h-24 w-24 select-none items-center justify-center rounded-full
+          text-4xl shadow-lg transition-all duration-150
+          focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300
           disabled:cursor-not-allowed disabled:opacity-40
-          ${recording ? 'scale-110 animate-pulse bg-rose-500 shadow-rose-300' : 'bg-sky-500 hover:bg-sky-400 shadow-sky-200'}`}
+          ${
+            recording
+              ? 'scale-110 bg-[#ED2939] shadow-[0_0_24px_rgba(237,41,57,0.45)]'
+              : 'bg-[#0055A4] shadow-[0_0_16px_rgba(0,85,164,0.35)] hover:bg-[#00468a]'
+          }`}
         aria-pressed={recording}
         aria-label="Tap to talk"
       >
         🎤
       </button>
-      <p className="text-sm font-medium text-slate-500">
-        {recording ? 'Recording… tap to stop' : 'Tap to talk'}
+
+      <div className="flex h-5 items-end justify-center gap-1" aria-hidden="true">
+        {BAR_COLORS.map((color, i) => (
+          <span
+            key={i}
+            className={`w-1.5 rounded-full ${
+              recording ? 'h-5 animate-[mic-eq_0.9s_ease-in-out_infinite]' : 'h-1.5'
+            }`}
+            style={{
+              backgroundColor: color,
+              transformOrigin: 'bottom',
+              animationDelay: recording ? `${i * 0.12}s` : undefined,
+              animationDuration: recording ? `${0.7 + (i % 3) * 0.15}s` : undefined,
+            }}
+          />
+        ))}
+      </div>
+
+      <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+        {recording ? 'Listening… tap to stop' : 'Tap to talk'}
       </p>
       {error && <p className="max-w-xs text-center text-sm text-rose-500">{error}</p>}
     </div>
