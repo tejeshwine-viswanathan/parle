@@ -1,0 +1,11 @@
+.git
+.venv
+.env
+data
+frontend
+tests
+docs
+*.wav
+**/__pycache__
+backend/voices/*.onnx
+backend/voices/*.onnx.json
