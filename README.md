@@ -194,9 +194,15 @@ python tests/test_pipeline_smoke.py  # raw TTS → STT → tutor → TTS round-t
 
 `backend/requirements.txt` gives the minimum versions; `backend/requirements.lock.txt` is a `pip freeze` of a known-good environment if you want an exact reproduction (`pip install -r backend/requirements.lock.txt`).
 
-## Privacy
+## Privacy & security
 
-Parlé does not collect, transmit, or store your data anywhere but your own disk. There are no accounts, no analytics, and no network calls other than the ones to your own local Ollama instance. Conversation history lives in browser memory and is gone when you clear it or close the tab.
+Parlé has no accounts, no analytics, no telemetry, and makes no network calls at runtime other than to your own local Ollama instance. Specifically:
+
+- **Your voice never leaves your machine.** Recorded clips are sent only to the local backend, transcribed, and the temporary file is deleted immediately.
+- **Conversation history lives in browser memory** and is gone when you clear it or close the tab. The browser stores only your theme, voice and keyboard preferences (`localStorage`).
+- **What does touch disk, and only under `DATA_DIR` (gitignored):** a cache of the tutor's synthesised speech, wiped every time the backend starts or stops; and, only if you use the terminal CLI (`scripts/cli_pipeline.py`), each turn's recording under `data/cli_sessions/` — delete that folder whenever you like.
+- **One-time downloads only.** Models are fetched once at install (Piper voices, the Argos translation pack, and the Whisper model from Hugging Face on the first backend start when running natively; at image build time with Docker). After that everything runs offline.
+- **Local-only by design.** The app has no authentication, so it listens on `localhost` only: the native dev servers bind to loopback, and Docker Compose publishes the frontend on `127.0.0.1` with the backend not exposed at all. Don't put it on a network interface without adding auth in front of it.
 
 ## Tech stack
 

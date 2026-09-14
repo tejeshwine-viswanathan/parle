@@ -220,6 +220,9 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Parlé project-specific
+# Any real env file (.env, .env.local, .env.production…) — only the example ships.
+.env.*
+!.env.example
 node_modules/
 frontend/dist/
 backend/voices/*.onnx

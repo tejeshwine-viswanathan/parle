@@ -29,6 +29,21 @@ log = logging.getLogger(__name__)
 # and expose progress on /health so the UI can say "loading models…".
 _model_status: dict[str, str] = {"stt": "loading", "tts": "loading", "translate": "loading"}
 
+TTS_CACHE_DIR = config.DATA_DIR / "tts_cache"
+
+# Uploaded clips are capped in the UI at 60 s (~1 MB of webm); anything far
+# beyond that is a mistake or abuse, not speech worth transcribing.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
+def _clear_tts_cache() -> None:
+    """Synthesised tutor speech echoes what the learner said, so it lives only
+    for the lifetime of one backend process — the UI keeps no history across a
+    reload either, so nothing useful is lost."""
+    if TTS_CACHE_DIR.exists():
+        for stale in TTS_CACHE_DIR.iterdir():
+            stale.unlink(missing_ok=True)
+
 
 def _warm_models() -> None:
     for name, loader in (
@@ -46,8 +61,10 @@ def _warm_models() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _clear_tts_cache()
     threading.Thread(target=_warm_models, name="warm-models", daemon=True).start()
     yield
+    _clear_tts_cache()
 
 
 app = FastAPI(title="Parlé backend", lifespan=lifespan)
@@ -185,10 +202,14 @@ def transcribe(audio: UploadFile, language: Literal["fr", "en"] = Form("fr")) ->
     tab also sends English clips via `language=en`). French transcriptions also get
     best-effort pronunciation notes on words the model struggled with. An empty
     `text` means no speech was recognised — that's a normal outcome, not an error."""
+    data = audio.file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Audio clip too large")
+
     suffix = Path(audio.filename or "audio.wav").suffix or ".wav"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp_path = Path(tmp.name)
-        tmp.write(audio.file.read())
+        tmp.write(data)
 
     try:
         transcription = stt.transcribe(tmp_path, language=language)
@@ -238,10 +259,10 @@ def scenario_respond(req: ScenarioRespondRequest) -> TutorResponse:
     return TutorResponse(reply=reply)
 
 
-TTS_CACHE_DIR = config.DATA_DIR / "tts_cache"
 # Replays, "Hear it" buttons and voice switches all re-request the same text, so
-# keep the synthesized WAVs on disk keyed by (voice, text). Bounded so a long
-# stretch of practice doesn't quietly fill the drive.
+# keep the synthesized WAVs on disk keyed by (voice, text) for the life of the
+# process (cleared on start and shutdown — see _clear_tts_cache). Bounded so a
+# long stretch of practice doesn't quietly fill the drive.
 TTS_CACHE_MAX_FILES = 500
 _tts_lock = threading.Lock()
 
