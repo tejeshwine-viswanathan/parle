@@ -1,0 +1,9 @@
+# Normalise line endings so Windows and Unix checkouts don't churn every file.
+* text=auto eol=lf
+
+# Binary assets — never touch line endings.
+*.onnx binary
+*.wav binary
+*.png binary
+*.jpg binary
+*.ico binary

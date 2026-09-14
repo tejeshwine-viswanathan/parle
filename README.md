@@ -82,7 +82,7 @@ cp .env.example .env               # edit OLLAMA_MODEL if you pulled something e
 uvicorn backend.app:app --reload --port 8000
 ```
 
-The Whisper speech model downloads itself on the first transcription.
+The Whisper speech model downloads itself the first time the backend starts. All three models (speech recognition, voice, translation) load in the background at startup — the app shows a "Loading speech models…" banner until they're ready.
 
 **Frontend** (second terminal):
 
@@ -123,11 +123,11 @@ Click the 🗣️ icon in the left rail. Pick a topic (or type your own), set a 
 
 ![Topic practice setup](docs/screenshots/topic-setup.png)
 
-Just keep talking. When you go quiet for a few seconds, Parlé jumps in with a nudge to keep you going. If you're stuck, **Help me finish** plays an example of how you could continue, and **Keep talking** gives you another.
+Just keep talking. When you go quiet for a few seconds (adjustable on the setup screen — default 6 s), Parlé jumps in with a nudge to keep you going. If you're stuck, **Help me finish** plays an example of how you could continue, and **Keep talking** gives you another.
 
 ![Topic practice in progress](docs/screenshots/topic-active.png)
 
-When you're done, **Review what I said** shows everything you said, with any grammar mistakes underlined and corrected (this uses the LLM and can take a minute or two on a small model). **Generate PDF** exports your monologue as an essay.
+When you're done, **Review what I said** shows everything you said right away, then checks it segment by segment for grammar mistakes, which appear underlined and corrected as each one finishes (the LLM pass can take a minute or two in total on a small model). **Generate PDF** exports your monologue as an essay.
 
 ![Topic review with grammar corrections](docs/screenshots/topic-review.png)
 
@@ -152,11 +152,12 @@ All settings are environment variables, read from a `.env` file in the repo root
 | `OLLAMA_MODEL` | `llama3.2:3b` | The tutor/feedback model. Must already be pulled in Ollama. A 3B model that fits in VRAM replies in ~2s; a 7B model spilling to CPU can take 30s+ per turn. Avoid "thinking"/reasoning variants. |
 | `GRAMMAR_MODEL` | same as `OLLAMA_MODEL` | Optional larger model just for topic-practice grammar review, which small models are unreliable at (e.g. `mistral:7b`). |
 | `OLLAMA_KEEP_ALIVE` | `30m` | How long Ollama keeps the model loaded between turns. |
+| `OLLAMA_NUM_CTX` | `8192` | Context window in tokens. Ollama's own default (2048) silently drops the tutor's instructions once a conversation gets long. |
 | `OLLAMA_HOST` | `http://localhost:11434` | Native runs only — Docker always uses the host's Ollama via `host.docker.internal`. |
 | `WHISPER_MODEL_SIZE` | `small` | `tiny`, `base`, `small`, `medium`, `large-v3`. Bigger is more accurate and slower. In Docker this is baked in at build time, so rebuild after changing it. |
 | `WHISPER_DEVICE` / `WHISPER_COMPUTE_TYPE` | `cpu` / `int8` | Native runs with an NVIDIA GPU can use `cuda` / `float16`. |
 | `PIPER_VOICE_NAME` | `fr_FR-siwis-medium` | Default voice (the header picker overrides it per session). |
-| `DATA_DIR` | `./data` | Where temporary TTS audio and CLI session logs are written. |
+| `DATA_DIR` | `./data` | Where the TTS audio cache (last 500 clips, so replays are instant) and CLI session logs are written. |
 
 ## Troubleshooting
 
@@ -173,9 +174,9 @@ The frontend talks to these FastAPI endpoints (all under `/api/` through the dev
 
 | Endpoint | Method | Body / Params | Returns |
 |---|---|---|---|
-| `/health` | GET | — | `{"status": "ok"}` |
+| `/health` | GET | — | `{"status": "ok", "ready": bool, "models": {"stt", "tts", "translate": "loading" \| "ready" \| "error: …"}}` |
 | `/voices` | GET | — | Available Piper voices |
-| `/transcribe` | POST | multipart `audio`, optional `language` (`fr` default, `en`) | transcript, word confidences, pronunciation notes (French only) |
+| `/transcribe` | POST | multipart `audio`, optional `language` (`fr` default, `en`) | transcript, word confidences, pronunciation notes (French only); `text` is `""` when no speech was heard |
 | `/translate` | POST | `{"text", "direction": "fr-en" \| "en-fr"}` | `{"translation"}` |
 | `/tutor-respond` | POST | `{"history": [...], "user_text"}` | `{"reply"}` |
 | `/phrasing-suggestion` | POST | `{"text"}` | `{"suggestion"}` or `null` |
@@ -183,7 +184,15 @@ The frontend talks to these FastAPI endpoints (all under `/api/` through the dev
 | `/topic-start`, `/topic-nudge`, `/topic-complete`, `/topic-review` | POST | `{"topic", "history", ...}` | topic-practice opener, nudge, example continuation, grammar corrections |
 | `/speak` | POST | `{"text", "voice"?}` | `audio/wav` |
 
-Smoke tests that need no microphone: `python tests/test_pipeline_smoke.py` (raw pipeline) and `python tests/test_api_smoke.py` (every endpoint in-process).
+## Tests
+
+```bash
+python -m pytest tests/          # fast, fully offline — grammar parsing, hallucination filter, pronunciation flagging
+python tests/test_api_smoke.py   # hits the core endpoints in-process (needs Ollama + models)
+python tests/test_pipeline_smoke.py  # raw TTS → STT → tutor → TTS round-trip (same requirements)
+```
+
+`backend/requirements.txt` gives the minimum versions; `backend/requirements.lock.txt` is a `pip freeze` of a known-good environment if you want an exact reproduction (`pip install -r backend/requirements.lock.txt`).
 
 ## Privacy
 

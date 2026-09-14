@@ -1,9 +1,11 @@
-"""Offline smoke test for the FastAPI endpoints (/transcribe, /translate,
-/tutor-respond, /speak).
+"""Smoke test for the core FastAPI endpoints (/health, /transcribe, /translate,
+/tutor-respond, /speak) — the roleplay, topic-practice and phrasing endpoints
+share the same plumbing and aren't repeated here.
 
 Exercises the app in-process via FastAPI's TestClient, so no server needs to
 be running. Requires Ollama running locally with the configured model
-pulled, and the Piper voice model downloaded (see README).
+pulled, and the Piper voice model downloaded (see README). For the fast,
+fully offline unit tests, run `python -m pytest tests/` instead.
 """
 
 from __future__ import annotations

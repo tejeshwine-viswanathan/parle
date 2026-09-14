@@ -15,7 +15,9 @@ fastapi>=0.121.2
 uvicorn[standard]>=0.38.0
 python-multipart>=0.0.20
 
-# Test client for tests/test_api_smoke.py (TestClient needs httpx)
+# Tests: pytest for the offline unit tests (tests/test_*.py); TestClient in
+# tests/test_api_smoke.py needs httpx
+pytest>=8.0
 httpx>=0.28.1
 
 # Audio I/O for the CLI pipeline
