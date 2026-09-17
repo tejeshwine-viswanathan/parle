@@ -1,5 +1,6 @@
 services:
   backend:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -28,6 +29,7 @@ services:
       start_period: 30s
 
   frontend:
+    restart: unless-stopped
     build: ./frontend
     ports:
       # Loopback by default: the app has no authentication, so it should not be

@@ -60,6 +60,17 @@ To pick a different Ollama model or Whisper size, create a `.env` next to `docke
 
 Stop with `Ctrl+C`, or `docker compose down`.
 
+### Keep it running as a desktop app
+
+If you'd like Parlé permanently available at a fixed address without juggling ports with your other local projects:
+
+1. Set `PARLE_PORT=80` in `.env` (if nothing else on your machine uses port 80).
+2. Start it detached: `docker compose up -d --build`. Both containers have `restart: unless-stopped`, so they come back after a reboot as long as Docker Desktop starts with your login.
+3. Open **http://parle.localhost** — browsers resolve any `*.localhost` name to your own machine and treat it as a secure origin, so the microphone still works with no HTTPS setup.
+4. Install it as an app so it gets its own window and Start-menu icon: in Chrome or Edge, click the install icon at the right end of the address bar (or menu → *Apps* → *Install this site as an app* in Edge).
+
+`docker compose stop` / `docker compose start` pause and resume it without rebuilding.
+
 ## Run without Docker
 
 If you'd rather run the pieces directly (e.g. to develop, or to use a GPU for speech recognition).
